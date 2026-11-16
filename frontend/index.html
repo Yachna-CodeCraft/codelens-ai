@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeLens AI</title>
+<style>
+  :root {
+    --paper: #f1f3f2; --panel: #ffffff; --ink: #1b2a2f; --muted: #5d6d72;
+    --line: #d5dcda; --teal: #0f6b6b; --teal-ink: #ffffff; --mark: #a8651a; --err: #b3261e;
+    --code-bg: #eaeeed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #141c1e; --panel: #1c2629; --ink: #e4ecea; --muted: #93a4a8;
+      --line: #2e3c40; --teal: #4fb3ae; --teal-ink: #0d1819; --mark: #e0a04d; --err: #f2867f;
+      --code-bg: #121a1c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1, h2 { margin: 0; font-weight: 650; }
+  button, input, textarea { font: inherit; color: inherit; }
+  input, textarea { width: 100%; padding: 9px 11px; background: var(--panel);
+                    border: 1px solid var(--line); border-radius: 6px; }
+  input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+  button { cursor: pointer; padding: 9px 14px; border-radius: 6px; border: 1px solid var(--teal);
+           background: var(--teal); color: var(--teal-ink); font-weight: 600; }
+  button.ghost { background: transparent; color: var(--teal); }
+  button:disabled { opacity: .55; cursor: wait; }
+  pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
+        margin: 0; padding: 12px; background: var(--code-bg); border-radius: 6px;
+        overflow: auto; max-height: 460px; }
+  .hidden { display: none !important; }
+  .muted { color: var(--muted); }
+  .error { color: var(--err); min-height: 1.4em; font-size: 14px; }
+
+  #auth { max-width: 380px; margin: 12vh auto; padding: 28px; background: var(--panel);
+          border: 1px solid var(--line); border-radius: 10px; display: grid; gap: 12px; }
+  #auth h1 { font-size: 26px; letter-spacing: -.01em; }
+
+  #app { display: grid; grid-template-columns: 300px 1fr; min-height: 100vh; }
+  aside { padding: 20px; border-right: 1px solid var(--line); display: grid;
+          gap: 14px; align-content: start; }
+  aside h1 { font-size: 20px; }
+  .repo { display: block; width: 100%; text-align: left; background: transparent; color: var(--ink);
+          border: 1px solid var(--line); margin-bottom: 6px; font-weight: 500; }
+  .repo.active { border-color: var(--teal); box-shadow: inset 3px 0 0 var(--teal); }
+  main { padding: 24px; min-width: 0; }
+  nav { display: flex; gap: 6px; margin: 14px 0 18px; }
+  nav button { background: transparent; color: var(--muted); border-color: var(--line); }
+  nav button.on { background: var(--teal); color: var(--teal-ink); border-color: var(--teal); }
+  section { display: grid; gap: 14px; }
+
+  .stats { display: flex; gap: 22px; flex-wrap: wrap; }
+  .stats div { font-size: 13px; color: var(--muted); }
+  .stats b { display: block; font-size: 22px; color: var(--ink); }
+  .filelist { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 14px; }
+  .filelist ul { list-style: none; margin: 0; padding: 0; max-height: 520px; overflow: auto;
+                 border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .filelist li { padding: 6px 10px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--line);
+                 font-family: ui-monospace, Menlo, Consolas, monospace; word-break: break-all; }
+  .filelist li:hover { background: var(--code-bg); }
+  .msg { padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px;
+         background: var(--panel); white-space: pre-wrap; }
+  .msg.q { border-left: 3px solid var(--teal); }
+  .src { font-size: 12px; color: var(--mark); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .block { white-space: pre-wrap; background: var(--panel); border: 1px solid var(--line);
+           border-radius: 8px; padding: 14px; max-width: 80ch; }
+  @media (max-width: 800px) {
+    #app { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    .filelist { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="auth">
+  <h1>CodeLens AI</h1>
+  <p class="muted" style="margin:0">Sign in to analyze a repository and ask questions about its code.</p>
+  <input id="email" type="email" placeholder="Email" autocomplete="username">
+  <input id="password" type="password" placeholder="Password (8+ characters)" autocomplete="current-password">
+  <div class="error" id="authErr"></div>
+  <div style="display:flex; gap:8px">
+    <button id="loginBtn">Log in</button>
+    <button id="registerBtn" class="ghost">Create account</button>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <aside>
+    <h1>CodeLens AI</h1>
+    <div>
+      <input id="repoUrl" placeholder="https://github.com/user/repo">
+      <button id="analyzeBtn" style="margin-top:8px; width:100%">Analyze repository</button>
+      <div class="error" id="repoErr"></div>
+    </div>
+    <div id="repoList"></div>
+    <button class="ghost" id="logoutBtn">Log out</button>
+  </aside>
+
+  <main>
+    <div id="empty" class="muted">Paste a repository URL and select Analyze repository to get started.</div>
+    <div id="workspace" class="hidden">
+      <h2 id="repoTitle"></h2>
+      <nav>
+        <button data-tab="summary" class="on">Summary</button>
+        <button data-tab="files">Files</button>
+        <button data-tab="ask">Ask</button>
+      </nav>
+
+      <section id="tab-summary">
+        <div class="stats" id="stats"></div>
+        <div class="block" id="summaryText"></div>
+      </section>
+
+      <section id="tab-files" class="hidden">
+        <div class="filelist">
+          <ul id="fileUl"></ul>
+          <div>
+            <div class="muted" id="fileMeta">Select a file to view it.</div>
+            <pre id="fileView" class="hidden"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-ask" class="hidden">
+        <div id="chat" style="display:grid; gap:10px"></div>
+        <textarea id="question" rows="2" placeholder="e.g. How does authentication work?"></textarea>
+        <div><button id="askBtn">Ask</button></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let token = sessionStorage.getItem("token");
+let currentRepo = null;
+
+async function api(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (token) headers.Authorization = "Bearer " + token;
+  const res = await fetch(path, { ...opts, headers });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401 && token) logout();
+    const d = data.detail;
+    throw new Error(typeof d === "string" ? d : "Request failed (" + res.status + ")");
+  }
+  return data;
+}
+const post = (path, body) => api(path, {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+});
+
+function showApp(on) {
+  $("auth").classList.toggle("hidden", on);
+  $("app").classList.toggle("hidden", !on);
+}
+function logout() {
+  token = null; sessionStorage.removeItem("token"); currentRepo = null; showApp(false);
+}
+
+async function authenticate(register) {
+  $("authErr").textContent = "";
+  const email = $("email").value.trim(), password = $("password").value;
+  try {
+    if (register) await post("/auth/register", { email, password });
+    const form = new URLSearchParams({ username: email, password });
+    const data = await api("/auth/login", { method: "POST", body: form });
+    token = data.access_token; sessionStorage.setItem("token", token);
+    showApp(true); loadRepos();
+  } catch (e) { $("authErr").textContent = e.message; }
+}
+$("loginBtn").onclick = () => authenticate(false);
+$("registerBtn").onclick = () => authenticate(true);
+$("logoutBtn").onclick = logout;
+
+async function loadRepos() {
+  const repos = await api("/repos");
+  const list = $("repoList"); list.replaceChildren();
+  repos.forEach((r) => {
+    const b = document.createElement("button");
+    b.className = "repo" + (r.name === currentRepo ? " active" : "");
+    b.textContent = r.name + " (" + r.total_files + " files)";
+    b.onclick = () => openRepo(r.name);
+    list.appendChild(b);
+  });
+}
+
+$("analyzeBtn").onclick = async () => {
+  const btn = $("analyzeBtn"); $("repoErr").textContent = "";
+  btn.disabled = true; btn.textContent = "Analyzing…";
+  try {
+    const r = await post("/repos/analyze", { repo_url: $("repoUrl").value.trim() });
+    await loadRepos(); openRepo(r.repo_name);
+  } catch (e) { $("repoErr").textContent = e.message; }
+  btn.disabled = false; btn.textContent = "Analyze repository";
+};
+
+function tab(name) {
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+  ["summary", "files", "ask"].forEach((t) => $("tab-" + t).classList.toggle("hidden", t !== name));
+}
+document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => tab(b.dataset.tab)));
+
+async function openRepo(name) {
+  currentRepo = name;
+  $("empty").classList.add("hidden"); $("workspace").classList.remove("hidden");
+  $("repoTitle").textContent = name; $("chat").replaceChildren();
+  $("fileView").classList.add("hidden"); $("fileMeta").textContent = "Select a file to view it.";
+  tab("summary"); loadRepos();
+
+  $("summaryText").textContent = "Generating summary…"; $("stats").replaceChildren();
+  try {
+    const s = await api("/repos/" + encodeURIComponent(name) + "/summary");
+    const st = s.statistics;
+    [["Lines", st.total_lines], ["Languages", Object.keys(st.languages).length],
+     ["Entry points", st.entry_points.length]].forEach(([k, v]) => {
+      const d = document.createElement("div"); d.textContent = k;
+      const b = document.createElement("b"); b.textContent = v; d.prepend(b); $("stats").appendChild(d);
+    });
+    const langs = Object.entries(st.languages).map(([k, v]) => k + " " + v).join(", ");
+    $("summaryText").textContent = (s.ai_summary || s.readme_excerpt || "No README found.") +
+      "\n\nLanguages (lines): " + langs +
+      (st.entry_points.length ? "\nEntry points: " + st.entry_points.join(", ") : "") +
+      (st.dependency_files.length ? "\nDependencies: " + st.dependency_files.join(", ") : "");
+  } catch (e) { $("summaryText").textContent = e.message; }
+
+  const f = await api("/repos/" + encodeURIComponent(name) + "/files");
+  const ul = $("fileUl"); ul.replaceChildren();
+  f.files.forEach((file) => {
+    const li = document.createElement("li"); li.textContent = file.path;
+    li.onclick = () => openFile(file.path); ul.appendChild(li);
+  });
+}
+
+async function openFile(path) {
+  try {
+    const f = await api("/repos/" + encodeURIComponent(currentRepo) + "/files/" +
+      path.split("/").map(encodeURIComponent).join("/"));
+    $("fileMeta").textContent = f.path + " · " + f.language + " · " + f.lines + " lines · " + f.chunks + " chunks";
+    $("fileView").textContent = f.content; $("fileView").classList.remove("hidden");
+  } catch (e) { $("fileMeta").textContent = e.message; }
+}
+
+function addMsg(text, cls) {
+  const d = document.createElement("div"); d.className = "msg " + cls; d.textContent = text;
+  $("chat").appendChild(d); return d;
+}
+$("askBtn").onclick = async () => {
+  const q = $("question").value.trim(); if (!q || !currentRepo) return;
+  $("question").value = ""; addMsg(q, "q");
+  const pending = addMsg("Thinking…", "a"); $("askBtn").disabled = true;
+  try {
+    const r = await post("/assistant/ask", { repo_name: currentRepo, question: q });
+    pending.textContent = r.answer;
+    if (r.sources.length) {
+      const s = document.createElement("div"); s.className = "src";
+      s.textContent = "\nSources: " + r.sources.map((x) => x.file_path + ":" + x.start_line + "-" + x.end_line).join("   ");
+      pending.appendChild(s);
+    }
+  } catch (e) { pending.textContent = e.message; }
+  $("askBtn").disabled = false;
+};
+
+if (token) { showApp(true); loadRepos().catch(() => {}); }
+</script>
+</body>
+</html>
